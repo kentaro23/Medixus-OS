@@ -14,6 +14,7 @@ import {
   LogOut,
   Menu,
   X,
+  Settings,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ const navItems = [
   { label: "服薬管理", href: "/medications", icon: Pill },
   { label: "健康データ", href: "/health", icon: HeartPulse },
   { label: "メッセージ", href: "/messages", icon: Bell },
+  { label: "設定", href: "/settings", icon: Settings },
 ];
 
 export default function PatientLayout({

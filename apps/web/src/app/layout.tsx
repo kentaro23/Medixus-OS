@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { RoleProvider } from "@/lib/role-context";
 import DemoBanner from "@/components/shared/DemoBanner";
+import AutoLogout from "@/components/shared/AutoLogout";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,7 +33,10 @@ export default function RootLayout({
     >
       <body className="min-h-full">
         <DemoBanner />
-        <RoleProvider>{children}</RoleProvider>
+        <RoleProvider>
+          <AutoLogout />
+          {children}
+        </RoleProvider>
       </body>
     </html>
   );

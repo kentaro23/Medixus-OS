@@ -6,13 +6,22 @@ import { ShieldX, ArrowLeft } from "lucide-react";
 import { useRole, type AppRole } from "@/lib/role-context";
 import { Button } from "@/components/ui/button";
 
+const ROLE_LABELS: Record<string, string> = {
+  patient: "患者",
+  doctor: "医師",
+  nurse: "看護師",
+  clerk: "事務",
+  clinic_admin: "クリニック管理者",
+  medixus_admin: "Medixus運営管理者",
+};
+
 interface RoleGuardProps {
   allowed: AppRole[];
   children: React.ReactNode;
 }
 
 export default function RoleGuard({ allowed, children }: RoleGuardProps) {
-  const { role } = useRole();
+  const { role, loading } = useRole();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
 
@@ -20,7 +29,7 @@ export default function RoleGuard({ allowed, children }: RoleGuardProps) {
     setMounted(true);
   }, []);
 
-  if (!mounted) {
+  if (!mounted || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="animate-spin w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full" />
@@ -44,28 +53,12 @@ export default function RoleGuard({ allowed, children }: RoleGuardProps) {
           <p className="text-gray-500">
             このページは
             <span className="font-medium text-gray-700">
-              {allowed.map((a) => {
-                const labels: Record<AppRole, string> = {
-                  patient: "患者",
-                  doctor: "医師",
-                  clinic_admin: "クリニック管理者",
-                  admin: "Medixus運営管理者",
-                };
-                return labels[a];
-              }).join("・")}
+              {allowed.map((a) => ROLE_LABELS[a] || a).join("・")}
             </span>
             のみアクセスできます。
           </p>
           <p className="text-sm text-gray-400">
-            現在のロール:
-            <span className="font-medium">
-              {{
-                patient: "患者",
-                doctor: "医師",
-                clinic_admin: "クリニック管理者",
-                admin: "Medixus運営管理者",
-              }[role]}
-            </span>
+            現在のロール: <span className="font-medium">{ROLE_LABELS[role] || role}</span>
           </p>
           <Button onClick={() => router.push("/")} variant="outline">
             <ArrowLeft size={16} className="mr-2" />

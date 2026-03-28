@@ -51,7 +51,7 @@ const roles: {
     href: "/clinic",
   },
   {
-    id: "admin",
+    id: "medixus_admin",
     label: "Medixus運営管理者",
     description: "KPI管理・クリニック管理・収益分析・システム設定",
     icon: Shield,
