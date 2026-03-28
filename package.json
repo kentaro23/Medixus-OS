@@ -1,0 +1,22 @@
+{
+  "name": "medixus-os",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspace=apps/web",
+    "lint": "npm run lint --workspace=apps/web",
+    "typecheck": "npm run typecheck --workspace=apps/web",
+    "db:migrate": "node packages/db/migrate.js",
+    "db:seed:demo": "npx tsx packages/db/seed/demo.ts",
+    "db:reset-demo": "npx tsx packages/db/seed/reset-demo.ts",
+    "db:gen-types": "bash packages/db/types/generate.sh"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "turbo": "^2.0.0"
+  }
+}

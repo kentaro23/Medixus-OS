@@ -1,0 +1,8 @@
+{
+  "name": "@medixus/db",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "gen-types": "bash types/generate.sh"
+  }
+}

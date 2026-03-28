@@ -1,0 +1,16 @@
+{
+  "name": "@medixus/shared",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
