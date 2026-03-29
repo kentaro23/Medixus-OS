@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { signIn, signInWithOAuth } from "../actions";
+import { IS_DEMO } from "@/lib/env";
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +49,29 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {IS_DEMO && (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 space-y-2">
+              <p className="font-semibold text-amber-900">デモ用アカウント（シード投入後のみ有効）</p>
+              <ul className="list-disc pl-4 space-y-1 text-amber-900/90">
+                <li>
+                  患者: <code className="text-xs bg-white/80 px-1 rounded">patient1@demo.medixus.jp</code> /{" "}
+                  <code className="text-xs bg-white/80 px-1 rounded">Demo1234!</code>
+                </li>
+                <li>
+                  医師: <code className="text-xs bg-white/80 px-1 rounded">doctor1@demo.medixus.jp</code> / 同上
+                </li>
+                <li>
+                  院長（管理）: <code className="text-xs bg-white/80 px-1 rounded">admin@demo.medixus.jp</code> / 同上
+                </li>
+              </ul>
+              <p className="text-xs text-amber-800/90 leading-relaxed">
+                ログインできない場合は、Supabase にユーザーがまだありません。PC で{" "}
+                <code className="bg-white/80 px-1 rounded">SUPABASE_URL</code> と{" "}
+                <code className="bg-white/80 px-1 rounded">SUPABASE_SERVICE_ROLE_KEY</code> を設定し、
+                <code className="bg-white/80 px-1 rounded">npx tsx packages/db/seed/demo.ts</code> を実行してください。
+              </p>
+            </div>
+          )}
           <form action={handleSubmit} className="space-y-4">
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
