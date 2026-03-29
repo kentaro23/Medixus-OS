@@ -21,25 +21,46 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+function getErrorMessage(error: unknown): string {
+  if (typeof error === "object" && error !== null && "message" in error) {
+    return String((error as { message: unknown }).message);
+  }
+  return String(error);
+}
+
+function assertNoError(label: string, error: unknown): void {
+  if (error) {
+    throw new Error(`[seed:${label}] ${getErrorMessage(error)}`);
+  }
+}
+
+function isAlreadyRegisteredError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes("already been registered") ||
+    message.includes("already registered")
+  );
+}
+
 // ================================================================
 // 固定UUID
 // ================================================================
 const IDS = {
   clinic: "c0000001-0000-0000-0000-000000000001",
   patients: [
-    "p0000001-0000-0000-0000-000000000001", // 山田太郎
-    "p0000002-0000-0000-0000-000000000002", // 鈴木花子
-    "p0000003-0000-0000-0000-000000000003", // 佐々木健一
-    "p0000004-0000-0000-0000-000000000004", // 中村由美
-    "p0000005-0000-0000-0000-000000000005", // 渡辺洋介
+    "e0000001-0000-0000-0000-000000000001", // 山田太郎
+    "e0000002-0000-0000-0000-000000000002", // 鈴木花子
+    "e0000003-0000-0000-0000-000000000003", // 佐々木健一
+    "e0000004-0000-0000-0000-000000000004", // 中村由美
+    "e0000005-0000-0000-0000-000000000005", // 渡辺洋介
   ],
   doctors: [
     "d0000001-0000-0000-0000-000000000001", // 佐藤誠一（院長）
     "d0000002-0000-0000-0000-000000000002", // 田中美咲（非常勤）
   ],
   clinicAdmin: "a0000001-0000-0000-0000-000000000001",
-  pharmacy: "ph000001-0000-0000-0000-000000000001",
-  lab: "lb000001-0000-0000-0000-000000000001",
+  pharmacy: "b0000001-0000-0000-0000-000000000001",
+  lab: "b0000002-0000-0000-0000-000000000002",
 };
 
 const PATIENTS = [
@@ -76,30 +97,33 @@ async function seed() {
 
   // 1. クリニック
   console.log("  📍 クリニック...");
-  await supabase.from("clinics").upsert({
+  const { error: clinicErr } = await supabase.from("clinics").upsert({
     id: IDS.clinic, name: "さくら内科クリニック", clinic_type: "own",
     postal_code: "252-0231", address: "神奈川県相模原市中央区相模原3-1-1 さくらビル2F",
     phone: "042-700-1234", email: "info@sakura-clinic.jp",
     is_active: true, settings: { department: "内科・生活習慣病外来" }, is_seed_data: true,
   });
+  assertNoError("clinics.upsert", clinicErr);
 
   // 2. 提携薬局・検査機関
   console.log("  💊 提携薬局...");
-  await supabase.from("partner_pharmacies").upsert({
+  const { error: pharmacyErr } = await supabase.from("partner_pharmacies").upsert({
     id: IDS.pharmacy, name: "みどり調剤薬局 相模原店",
     postal_code: "252-0232", address: "神奈川県相模原市中央区相模原3-2-5",
     phone: "042-700-5678", fax: "042-700-5679", supports_delivery: true,
     is_active: true, is_seed_data: true,
   });
+  assertNoError("partner_pharmacies.upsert", pharmacyErr);
 
   console.log("  🔬 提携検査機関...");
-  await supabase.from("partner_labs").upsert({
+  const { error: labErr } = await supabase.from("partner_labs").upsert({
     id: IDS.lab, name: "相模原メディカルラボ",
     postal_code: "252-0233", address: "神奈川県相模原市中央区相模原4-5-6",
     phone: "042-700-9999",
     available_tests: ["血液検査", "尿検査", "HbA1c", "脂質パネル", "腎機能", "肝機能"],
     is_active: true, is_seed_data: true,
   });
+  assertNoError("partner_labs.upsert", labErr);
 
   // 3. クリニック管理者
   console.log("  🏥 クリニック管理者...");
@@ -107,16 +131,18 @@ async function seed() {
   const { error: adminAuthErr } = await supabase.auth.admin.createUser({
     uid: IDS.clinicAdmin, email: adminEmail, password: "Demo1234!", email_confirm: true,
   });
-  if (adminAuthErr && !adminAuthErr.message.includes("already been registered")) {
-    console.error(`    ⚠️ Admin auth error:`, adminAuthErr.message);
+  if (adminAuthErr && !isAlreadyRegisteredError(adminAuthErr)) {
+    throw new Error(`[seed:auth.admin] ${getErrorMessage(adminAuthErr)}`);
   }
-  await supabase.from("profiles").upsert({
+  const { error: adminProfileErr } = await supabase.from("profiles").upsert({
     id: IDS.clinicAdmin, role: "clinic_admin", display_name: "佐藤 誠一（管理）", is_active: true, is_seed_data: true,
   });
-  await supabase.from("clinic_staff").upsert(
+  assertNoError("profiles.admin.upsert", adminProfileErr);
+  const { error: adminStaffErr } = await supabase.from("clinic_staff").upsert(
     { clinic_id: IDS.clinic, profile_id: IDS.clinicAdmin, staff_role: "admin", is_active: true },
     { onConflict: "clinic_id,profile_id" }
   );
+  assertNoError("clinic_staff.admin.upsert", adminStaffErr);
 
   // 4. 患者
   console.log("  👤 患者...");
@@ -124,16 +150,21 @@ async function seed() {
     const p = PATIENTS[i]; const id = IDS.patients[i];
     const email = `patient${i + 1}@demo.medixus.jp`;
     const { error: authErr } = await supabase.auth.admin.createUser({ uid: id, email, password: "Demo1234!", email_confirm: true });
-    if (authErr && !authErr.message.includes("already been registered")) console.error(`    ⚠️ ${p.name}:`, authErr.message);
-    await supabase.from("profiles").upsert({ id, role: "patient", display_name: p.name, is_active: true, is_seed_data: true });
-    await supabase.from("patients").upsert({
+    if (authErr && !isAlreadyRegisteredError(authErr)) {
+      throw new Error(`[seed:auth.patient.${i + 1}] ${getErrorMessage(authErr)}`);
+    }
+    const { error: patientProfileErr } = await supabase.from("profiles").upsert({ id, role: "patient", display_name: p.name, is_active: true, is_seed_data: true });
+    assertNoError(`profiles.patient.${i + 1}.upsert`, patientProfileErr);
+    const { error: patientRowErr } = await supabase.from("patients").upsert({
       id, date_of_birth: p.dob, gender: p.gender,
       allergies: JSON.stringify(p.allergies), current_medications: JSON.stringify(p.meds),
       medical_history: JSON.stringify(p.history), family_history: JSON.stringify([]), is_seed_data: true,
     });
-    await supabase.from("patient_clinic_registrations").upsert(
+    assertNoError(`patients.${i + 1}.upsert`, patientRowErr);
+    const { error: pcrErr } = await supabase.from("patient_clinic_registrations").upsert(
       { patient_id: id, clinic_id: IDS.clinic, is_active: true }, { onConflict: "patient_id,clinic_id" }
     );
+    assertNoError(`patient_clinic_registrations.${i + 1}.upsert`, pcrErr);
   }
 
   // 5. 医師
@@ -142,16 +173,21 @@ async function seed() {
     const d = DOCTORS[i]; const id = IDS.doctors[i];
     const email = `doctor${i + 1}@demo.medixus.jp`;
     const { error: authErr } = await supabase.auth.admin.createUser({ uid: id, email, password: "Demo1234!", email_confirm: true });
-    if (authErr && !authErr.message.includes("already been registered")) console.error(`    ⚠️ ${d.name}:`, authErr.message);
-    await supabase.from("profiles").upsert({ id, role: "doctor", display_name: d.name, is_active: true, is_seed_data: true });
-    await supabase.from("doctors").upsert({
+    if (authErr && !isAlreadyRegisteredError(authErr)) {
+      throw new Error(`[seed:auth.doctor.${i + 1}] ${getErrorMessage(authErr)}`);
+    }
+    const { error: doctorProfileErr } = await supabase.from("profiles").upsert({ id, role: "doctor", display_name: d.name, is_active: true, is_seed_data: true });
+    assertNoError(`profiles.doctor.${i + 1}.upsert`, doctorProfileErr);
+    const { error: doctorRowErr } = await supabase.from("doctors").upsert({
       id, license_number: d.license, specialties: d.specialties, qualifications: [],
       bio: d.bio, consultation_fee_per_minute: 500, is_accepting_new_patients: true, is_seed_data: true,
     });
-    await supabase.from("clinic_staff").upsert(
+    assertNoError(`doctors.${i + 1}.upsert`, doctorRowErr);
+    const { error: doctorStaffErr } = await supabase.from("clinic_staff").upsert(
       { clinic_id: IDS.clinic, profile_id: id, staff_role: i === 0 ? "managing_doctor" : "doctor", is_active: true },
       { onConflict: "clinic_id,profile_id" }
     );
+    assertNoError(`clinic_staff.doctor.${i + 1}.upsert`, doctorStaffErr);
   }
 
   // 6. 医師スケジュール
