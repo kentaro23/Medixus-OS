@@ -4,6 +4,7 @@ import "./globals.css";
 import { RoleProvider } from "@/lib/role-context";
 import DemoBanner from "@/components/shared/DemoBanner";
 import AutoLogout from "@/components/shared/AutoLogout";
+import DemoGuide from "@/components/shared/DemoGuide";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,6 +37,7 @@ export default function RootLayout({
         <RoleProvider>
           <AutoLogout />
           {children}
+          <DemoGuide />
         </RoleProvider>
       </body>
     </html>

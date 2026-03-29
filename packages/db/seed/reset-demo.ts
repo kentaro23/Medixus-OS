@@ -22,6 +22,12 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 });
 
 const TABLES_DELETE_ORDER = [
+  "signage_contents",
+  "web_questionnaire_responses",
+  "web_questionnaire_templates",
+  "queue_entries",
+  "line_connections",
+  "phone_call_logs",
   "medication_logs",
   "prescription_items",
   "prescriptions",
@@ -31,6 +37,7 @@ const TABLES_DELETE_ORDER = [
   "insurance_claims",
   "payments",
   "video_sessions",
+  "doctor_schedules",
   "appointments",
   "consents",
   "ai_consultations",
