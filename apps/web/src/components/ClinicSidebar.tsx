@@ -15,6 +15,12 @@ import {
   Lock,
   LogOut,
   Building2,
+  Phone,
+  MessageSquare,
+  Users,
+  ClipboardList,
+  CreditCard,
+  Monitor,
 } from "lucide-react";
 import { useState } from "react";
 import { useClinic } from "@/lib/clinic-context";
@@ -151,6 +157,36 @@ export default function ClinicSidebar() {
             );
           })}
         </ul>
+
+        <div className="mt-4">
+          <p className="text-sidebar-text text-[10px] uppercase tracking-widest px-3 mb-2 font-semibold">
+            対面業務DX
+          </p>
+          <ul className="space-y-0.5">
+            {[
+              { label: "AI電話受付", href: "/clinic/phone", icon: <Phone size={20} /> },
+              { label: "LINE予約・呼出", href: "/clinic/line", icon: <MessageSquare size={20} /> },
+              { label: "順番管理", href: "/clinic/queue", icon: <Users size={20} /> },
+              { label: "Web問診票", href: "/clinic/questionnaires", icon: <ClipboardList size={20} /> },
+              { label: "会計管理", href: "/clinic/billing", icon: <CreditCard size={20} /> },
+              { label: "サイネージ", href: "/clinic/signage", icon: <Monitor size={20} /> },
+            ].map((item) => (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
+                    isActive(item.href)
+                      ? "text-white bg-cyan-600"
+                      : "text-sidebar-text hover:text-white hover:bg-sidebar-hover"
+                  }`}
+                >
+                  {item.icon}
+                  <span>{item.label}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
 
         <div className="mt-6">
           <p className="text-sidebar-text text-[10px] uppercase tracking-widest px-3 mb-2 font-semibold">
