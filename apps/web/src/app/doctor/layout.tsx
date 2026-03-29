@@ -24,7 +24,7 @@ import { useRole } from "@/lib/role-context";
 const navItems = [
   { label: "ダッシュボード", href: "/doctor/dashboard", icon: LayoutDashboard, badge: 0 },
   { label: "患者一覧", href: "/doctor/patients", icon: Users, badge: 0 },
-  { label: "本日の予約", href: "/doctor/schedule", icon: Calendar, badge: 8 },
+  { label: "スケジュール", href: "/doctor/schedule", icon: Calendar, badge: 8 },
   { label: "AI問診確認", href: "/doctor/consultations", icon: MessageSquareHeart, badge: 3 },
   { label: "処方管理", href: "/doctor/prescriptions", icon: FileText, badge: 2 },
 ];

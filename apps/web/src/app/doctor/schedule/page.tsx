@@ -1,106 +1,331 @@
 "use client";
 
-import { useState } from "react";
-import { Video, MapPin, Clock, User, CheckCircle2, AlertTriangle, Play, ChevronLeft, ChevronRight } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useEffect } from "react";
+import { Calendar, Clock, Plus, Trash2, Save, Video, MapPin, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
 
-const timeSlots = Array.from({ length: 17 }, (_, i) => {
-  const h = Math.floor(i / 2) + 9;
-  const m = i % 2 === 0 ? "00" : "30";
-  return `${h}:${m}`;
-});
+interface ScheduleSlot {
+  id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  slot_duration_minutes: number;
+  is_active: boolean;
+}
 
-const appointments = [
-  { id: "1", patient: "山田 太郎", time: "10:00", endTime: "10:15", type: "online", status: "scheduled", reason: "高血圧 経過観察", age: 45 },
-  { id: "2", patient: "田中 美咲", time: "10:30", endTime: "10:45", type: "online", status: "scheduled", reason: "糖尿病 フォロー", age: 62 },
-  { id: "3", patient: "佐々木 健", time: "11:00", endTime: "11:30", type: "in_person", status: "waiting", reason: "腰痛", age: 50 },
-  { id: "4", patient: "鈴木 あゆみ", time: "11:30", endTime: "11:45", type: "online", status: "scheduled", reason: "不眠症 相談", age: 28 },
-  { id: "5", patient: "高橋 次郎", time: "14:00", endTime: "14:15", type: "online", status: "scheduled", reason: "高脂血症 経過", age: 55 },
-  { id: "6", patient: "伊藤 真理", time: "14:30", endTime: "14:45", type: "online", status: "completed", reason: "片頭痛 フォロー", age: 38 },
-  { id: "7", patient: "渡辺 翔太", time: "15:00", endTime: "15:30", type: "in_person", status: "scheduled", reason: "健診結果 説明", age: 42 },
-  { id: "8", patient: "中村 さくら", time: "15:30", endTime: "15:45", type: "online", status: "scheduled", reason: "花粉症", age: 33 },
+interface TodayAppointment {
+  id: string;
+  patient_name: string;
+  appointment_type: string;
+  status: string;
+  scheduled_at: string;
+  duration_minutes: number;
+}
+
+const DAY_NAMES = ["日", "月", "火", "水", "木", "金", "土"];
+
+const DEMO_SCHEDULE: ScheduleSlot[] = [
+  { id: "s1", day_of_week: 1, start_time: "09:00", end_time: "12:00", slot_duration_minutes: 15, is_active: true },
+  { id: "s2", day_of_week: 1, start_time: "14:00", end_time: "17:00", slot_duration_minutes: 15, is_active: true },
+  { id: "s3", day_of_week: 2, start_time: "09:00", end_time: "12:00", slot_duration_minutes: 15, is_active: true },
+  { id: "s4", day_of_week: 3, start_time: "09:00", end_time: "12:00", slot_duration_minutes: 15, is_active: true },
+  { id: "s5", day_of_week: 3, start_time: "14:00", end_time: "17:00", slot_duration_minutes: 15, is_active: true },
+  { id: "s6", day_of_week: 4, start_time: "09:00", end_time: "12:00", slot_duration_minutes: 15, is_active: true },
+  { id: "s7", day_of_week: 5, start_time: "09:00", end_time: "12:00", slot_duration_minutes: 15, is_active: true },
+  { id: "s8", day_of_week: 5, start_time: "14:00", end_time: "17:00", slot_duration_minutes: 15, is_active: true },
 ];
 
-const statusBg: Record<string, string> = {
-  scheduled: "bg-blue-50 border-blue-200",
-  waiting: "bg-amber-50 border-amber-200",
-  in_progress: "bg-green-50 border-green-200",
-  completed: "bg-gray-50 border-gray-200 opacity-50",
-};
+const DEMO_TODAY: TodayAppointment[] = [
+  { id: "t1", patient_name: "山田 太郎", appointment_type: "online_followup", status: "scheduled", scheduled_at: new Date().toISOString().split("T")[0] + "T09:00:00", duration_minutes: 15 },
+  { id: "t2", patient_name: "田中 花子", appointment_type: "online_initial", status: "scheduled", scheduled_at: new Date().toISOString().split("T")[0] + "T09:30:00", duration_minutes: 30 },
+  { id: "t3", patient_name: "鈴木 次郎", appointment_type: "in_person_followup", status: "completed", scheduled_at: new Date().toISOString().split("T")[0] + "T10:00:00", duration_minutes: 15 },
+  { id: "t4", patient_name: "高橋 美咲", appointment_type: "online_followup", status: "scheduled", scheduled_at: new Date().toISOString().split("T")[0] + "T10:30:00", duration_minutes: 15 },
+  { id: "t5", patient_name: "渡辺 健一", appointment_type: "pre_consultation", status: "scheduled", scheduled_at: new Date().toISOString().split("T")[0] + "T11:00:00", duration_minutes: 15 },
+];
 
-export default function SchedulePage() {
+export default function DoctorSchedulePage() {
+  const [tab, setTab] = useState<"today" | "manage">("today");
+  const [schedule, setSchedule] = useState<ScheduleSlot[]>(DEMO_SCHEDULE);
+  const [todayAppts] = useState<TodayAppointment[]>(DEMO_TODAY);
+  const [editingSlot, setEditingSlot] = useState<Partial<ScheduleSlot> | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: scheduleData } = await supabase
+          .from("doctor_schedules")
+          .select("*")
+          .eq("doctor_id", user.id)
+          .eq("is_active", true);
+
+        if (scheduleData && scheduleData.length > 0) {
+          setSchedule(scheduleData);
+        }
+      } catch {
+        /* use demo data */
+      }
+    }
+    load();
+  }, []);
+
+  function addSlot() {
+    setEditingSlot({
+      day_of_week: 1,
+      start_time: "09:00",
+      end_time: "12:00",
+      slot_duration_minutes: 15,
+      is_active: true,
+    });
+  }
+
+  function saveNewSlot() {
+    if (!editingSlot) return;
+    setSchedule((prev) => [
+      ...prev,
+      {
+        id: "new-" + Date.now(),
+        day_of_week: editingSlot.day_of_week || 1,
+        start_time: editingSlot.start_time || "09:00",
+        end_time: editingSlot.end_time || "12:00",
+        slot_duration_minutes: editingSlot.slot_duration_minutes || 15,
+        is_active: true,
+      },
+    ]);
+    setEditingSlot(null);
+  }
+
+  function removeSlot(id: string) {
+    setSchedule((prev) => prev.filter((s) => s.id !== id));
+  }
+
+  async function saveSchedule() {
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from("doctor_schedules").delete().eq("doctor_id", user.id);
+        await supabase.from("doctor_schedules").insert(
+          schedule.map((s) => ({
+            doctor_id: user.id,
+            clinic_id: "00000000-0000-0000-0000-000000000001",
+            day_of_week: s.day_of_week,
+            start_time: s.start_time,
+            end_time: s.end_time,
+            slot_duration_minutes: s.slot_duration_minutes,
+            is_active: s.is_active,
+          }))
+        );
+      }
+    } catch {
+      /* demo mode */
+    }
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
   return (
-    <div className="space-y-6 animate-fade-in max-w-5xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">本日のスケジュール</h1>
-          <p className="text-muted-foreground text-sm mt-1">2026年3月28日（土）</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm"><ChevronLeft size={16} /></Button>
-          <span className="text-sm font-medium">今日</span>
-          <Button variant="ghost" size="sm"><ChevronRight size={16} /></Button>
-        </div>
+    <div className="max-w-5xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">スケジュール管理</h1>
+        <p className="text-sm text-muted-foreground mt-1">予約受付枠と本日の予約を管理します</p>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
-        {[
-          { label: "予約総数", value: appointments.length, color: "bg-blue-50 text-blue-700" },
-          { label: "オンライン", value: appointments.filter((a) => a.type === "online").length, color: "bg-indigo-50 text-indigo-700" },
-          { label: "対面", value: appointments.filter((a) => a.type === "in_person").length, color: "bg-teal-50 text-teal-700" },
-          { label: "完了", value: appointments.filter((a) => a.status === "completed").length, color: "bg-green-50 text-green-700" },
-        ].map((stat) => (
-          <Card key={stat.label}>
-            <CardContent className="pt-4 pb-3 text-center">
-              <p className="text-2xl font-bold">{stat.value}</p>
-              <p className="text-xs text-muted-foreground">{stat.label}</p>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="flex gap-2">
+        <Button
+          variant={tab === "today" ? "default" : "outline"}
+          onClick={() => setTab("today")}
+          className={tab === "today" ? "bg-teal-600 hover:bg-teal-700" : ""}
+        >
+          <Calendar size={16} className="mr-2" /> 本日の予約
+          <Badge className="ml-2 bg-white/20 text-white">{todayAppts.length}</Badge>
+        </Button>
+        <Button
+          variant={tab === "manage" ? "default" : "outline"}
+          onClick={() => setTab("manage")}
+          className={tab === "manage" ? "bg-teal-600 hover:bg-teal-700" : ""}
+        >
+          <Clock size={16} className="mr-2" /> 枠設定
+        </Button>
       </div>
 
-      <Card>
-        <CardContent className="pt-6">
-          <div className="space-y-2">
-            {appointments.map((apt) => (
-              <div key={apt.id} className={`flex items-center gap-4 p-4 border rounded-xl ${statusBg[apt.status]}`}>
-                <div className="w-16 text-center shrink-0">
-                  <p className="text-sm font-bold">{apt.time}</p>
-                  <p className="text-[10px] text-muted-foreground">~{apt.endTime}</p>
-                </div>
-                <div className="w-px h-10 bg-gray-200" />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <p className="font-medium text-sm">{apt.patient}</p>
-                    <span className="text-xs text-muted-foreground">{apt.age}歳</span>
-                    <Badge variant="outline" className="text-xs">
-                      {apt.type === "online" ? <><Video size={10} className="mr-1" />オンライン</> : <><MapPin size={10} className="mr-1" />対面</>}
-                    </Badge>
-                    {apt.status === "waiting" && (
-                      <Badge className="bg-amber-500 text-white text-xs">
-                        <AlertTriangle size={10} className="mr-1" /> 待機中
-                      </Badge>
-                    )}
-                    {apt.status === "completed" && (
-                      <Badge className="bg-gray-200 text-gray-600 text-xs">
-                        <CheckCircle2 size={10} className="mr-1" /> 完了
-                      </Badge>
-                    )}
+      {tab === "today" && (
+        <div className="space-y-3">
+          {todayAppts.map((a) => {
+            const time = new Date(a.scheduled_at).toLocaleTimeString("ja-JP", {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+            const isOnline = a.appointment_type.startsWith("online") || a.appointment_type === "pre_consultation";
+            return (
+              <Card key={a.id} className={a.status === "completed" ? "opacity-60" : ""}>
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="text-center min-w-[50px]">
+                      <p className="text-lg font-bold">{time}</p>
+                      <p className="text-xs text-muted-foreground">{a.duration_minutes}分</p>
+                    </div>
+                    <div className="border-l pl-4">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{a.patient_name}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {isOnline ? (
+                            <>
+                              <Video size={10} className="mr-1" /> オンライン
+                            </>
+                          ) : (
+                            <>
+                              <MapPin size={10} className="mr-1" /> 対面
+                            </>
+                          )}
+                        </Badge>
+                        {a.status === "completed" && <Badge variant="secondary">完了</Badge>}
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">{apt.reason}</p>
-                </div>
-                {apt.status !== "completed" && (
-                  <Button size="sm" className="bg-teal-600 hover:bg-teal-700">
-                    <Play size={12} className="mr-1" /> 開始
-                  </Button>
-                )}
-              </div>
-            ))}
+                  <div className="flex gap-2">
+                    {isOnline && a.status !== "completed" && (
+                      <Link href={`/doctor/consultations/${a.id}/video`}>
+                        <Button size="sm" className="bg-teal-600 hover:bg-teal-700">
+                          <Video size={14} className="mr-1" /> 開始
+                        </Button>
+                      </Link>
+                    )}
+                    <Link href={`/doctor/patients/${a.id}`}>
+                      <Button variant="outline" size="sm">
+                        <User size={14} className="mr-1" /> 詳細
+                      </Button>
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+          {todayAppts.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground">
+              <Calendar size={40} className="mx-auto mb-3 opacity-50" />
+              <p>本日の予約はありません</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "manage" && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-7 gap-2">
+            {DAY_NAMES.map((day, idx) => {
+              const daySlots = schedule.filter((s) => s.day_of_week === idx);
+              return (
+                <Card key={idx} className={daySlots.length === 0 ? "opacity-50" : ""}>
+                  <CardHeader className="p-3 pb-2">
+                    <CardTitle className="text-sm text-center">{day}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-2 space-y-1">
+                    {daySlots.map((slot) => (
+                      <div
+                        key={slot.id}
+                        className="bg-teal-50 rounded-lg p-2 text-xs group relative"
+                      >
+                        <p className="font-medium text-teal-700">
+                          {slot.start_time}-{slot.end_time}
+                        </p>
+                        <p className="text-teal-600">{slot.slot_duration_minutes}分枠</p>
+                        <button
+                          onClick={() => removeSlot(slot.id)}
+                          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    ))}
+                    {daySlots.length === 0 && <p className="text-xs text-center text-gray-400 py-2">休診</p>}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
-        </CardContent>
-      </Card>
+
+          {editingSlot && (
+            <Card className="border-teal-300 bg-teal-50/30">
+              <CardContent className="p-4">
+                <h3 className="text-sm font-medium mb-3">新しい枠を追加</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground">曜日</label>
+                    <select
+                      value={editingSlot.day_of_week}
+                      onChange={(e) => setEditingSlot({ ...editingSlot, day_of_week: Number(e.target.value) })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
+                    >
+                      {DAY_NAMES.map((d, i) => (
+                        <option key={i} value={i}>
+                          {d}曜日
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">開始時間</label>
+                    <input
+                      type="time"
+                      value={editingSlot.start_time}
+                      onChange={(e) => setEditingSlot({ ...editingSlot, start_time: e.target.value })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">終了時間</label>
+                    <input
+                      type="time"
+                      value={editingSlot.end_time}
+                      onChange={(e) => setEditingSlot({ ...editingSlot, end_time: e.target.value })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">枠の長さ</label>
+                    <select
+                      value={editingSlot.slot_duration_minutes}
+                      onChange={(e) => setEditingSlot({ ...editingSlot, slot_duration_minutes: Number(e.target.value) })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
+                    >
+                      <option value={10}>10分</option>
+                      <option value={15}>15分</option>
+                      <option value={20}>20分</option>
+                      <option value={30}>30分</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <Button size="sm" onClick={saveNewSlot} className="bg-teal-600 hover:bg-teal-700">
+                    追加
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEditingSlot(null)}>
+                    キャンセル
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={addSlot}>
+              <Plus size={16} className="mr-2" /> 枠を追加
+            </Button>
+            <Button onClick={saveSchedule} className="bg-teal-600 hover:bg-teal-700">
+              <Save size={16} className="mr-2" /> {saved ? "保存しました！" : "スケジュールを保存"}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

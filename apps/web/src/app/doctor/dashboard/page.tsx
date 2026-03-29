@@ -1,74 +1,171 @@
 "use client";
 
-import Link from "next/link";
+import { useState, useEffect, useCallback } from "react";
 import {
   Calendar,
-  MessageSquareHeart,
-  FileText,
-  AlertTriangle,
-  Clock,
   Video,
-  ArrowRight,
-  User,
-  Activity,
-  CheckCircle2,
-  XCircle,
+  MapPin,
+  MessageSquare,
+  Pill,
+  FileText,
+  AlertCircle,
+  Search,
+  ChevronRight,
+  Bell,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
 
-const todayAppointments = [
-  { id: "1", patient: "山田 太郎", time: "10:00", type: "online", status: "scheduled", reason: "高血圧 経過観察" },
-  { id: "2", patient: "田中 美咲", time: "10:30", type: "online", status: "scheduled", reason: "糖尿病 フォロー" },
-  { id: "3", patient: "佐々木 健", time: "11:00", type: "in_person", status: "waiting", reason: "腰痛" },
-  { id: "4", patient: "鈴木 あゆみ", time: "11:30", type: "online", status: "scheduled", reason: "不眠症 相談" },
-  { id: "5", patient: "高橋 次郎", time: "14:00", type: "online", status: "scheduled", reason: "高脂血症 経過" },
-  { id: "6", patient: "伊藤 真理", time: "14:30", type: "online", status: "completed", reason: "片頭痛 フォロー" },
-  { id: "7", patient: "渡辺 翔太", time: "15:00", type: "in_person", status: "scheduled", reason: "健診結果 説明" },
-  { id: "8", patient: "中村 さくら", time: "15:30", type: "online", status: "scheduled", reason: "花粉症" },
+interface TodayAppointment {
+  id: string;
+  patient_name: string;
+  patient_id: string;
+  appointment_type: string;
+  status: string;
+  scheduled_at: string;
+  duration_minutes: number;
+  has_consultation: boolean;
+}
+
+interface PendingTask {
+  type: string;
+  label: string;
+  count: number;
+  icon: typeof MessageSquare;
+  href: string;
+  color: string;
+}
+
+interface MonthlyStats {
+  total_consultations: number;
+  online_rate: number;
+  retention_rate: number;
+  avg_duration: number;
+}
+
+const DEMO_APPOINTMENTS: TodayAppointment[] = [
+  { id: "1", patient_name: "山田 太郎", patient_id: "p1", appointment_type: "online_followup", status: "scheduled", scheduled_at: `${new Date().toISOString().split("T")[0]}T09:00:00`, duration_minutes: 15, has_consultation: true },
+  { id: "2", patient_name: "田中 花子", patient_id: "p2", appointment_type: "online_initial", status: "scheduled", scheduled_at: `${new Date().toISOString().split("T")[0]}T09:30:00`, duration_minutes: 30, has_consultation: true },
+  { id: "3", patient_name: "鈴木 次郎", patient_id: "p3", appointment_type: "in_person_followup", status: "completed", scheduled_at: `${new Date().toISOString().split("T")[0]}T10:00:00`, duration_minutes: 15, has_consultation: false },
+  { id: "4", patient_name: "高橋 美咲", patient_id: "p4", appointment_type: "online_followup", status: "scheduled", scheduled_at: `${new Date().toISOString().split("T")[0]}T10:30:00`, duration_minutes: 15, has_consultation: true },
+  { id: "5", patient_name: "渡辺 健一", patient_id: "p5", appointment_type: "pre_consultation", status: "scheduled", scheduled_at: `${new Date().toISOString().split("T")[0]}T11:00:00`, duration_minutes: 15, has_consultation: false },
+  { id: "6", patient_name: "伊藤 雅子", patient_id: "p6", appointment_type: "online_followup", status: "scheduled", scheduled_at: `${new Date().toISOString().split("T")[0]}T14:00:00`, duration_minutes: 15, has_consultation: true },
+  { id: "7", patient_name: "中村 大輔", patient_id: "p7", appointment_type: "in_person_initial", status: "scheduled", scheduled_at: `${new Date().toISOString().split("T")[0]}T14:30:00`, duration_minutes: 30, has_consultation: false },
+  { id: "8", patient_name: "小林 由美", patient_id: "p8", appointment_type: "online_followup", status: "scheduled", scheduled_at: `${new Date().toISOString().split("T")[0]}T15:00:00`, duration_minutes: 15, has_consultation: true },
 ];
 
-const pendingTasks = [
-  { type: "triage", label: "AI問診確認待ち", count: 3, icon: MessageSquareHeart, color: "text-amber-600 bg-amber-50", href: "/doctor/consultations" },
-  { type: "prescription", label: "処方承認待ち", count: 2, icon: FileText, color: "text-blue-600 bg-blue-50", href: "/doctor/prescriptions" },
-  { type: "alert", label: "バイタルアラート", count: 1, icon: AlertTriangle, color: "text-red-600 bg-red-50", href: "/doctor/patients" },
-  { type: "message", label: "未読メッセージ", count: 4, icon: MessageSquareHeart, color: "text-purple-600 bg-purple-50", href: "#" },
+const DEMO_TASKS: PendingTask[] = [
+  { type: "messages", label: "未読メッセージ", count: 4, icon: MessageSquare, href: "/doctor/patients", color: "text-blue-600 bg-blue-100" },
+  { type: "prescriptions", label: "未承認処方", count: 2, icon: Pill, href: "/doctor/prescriptions", color: "text-teal-600 bg-teal-100" },
+  { type: "lab_results", label: "確認待ち検査結果", count: 3, icon: FileText, href: "/doctor/patients", color: "text-purple-600 bg-purple-100" },
+  { type: "vital_alerts", label: "バイタル異常アラート", count: 1, icon: AlertCircle, href: "/doctor/patients", color: "text-red-600 bg-red-100" },
 ];
 
-const statusIcon: Record<string, { icon: typeof CheckCircle2; class: string }> = {
-  scheduled: { icon: Clock, class: "text-blue-500" },
-  waiting: { icon: AlertTriangle, class: "text-amber-500" },
-  in_progress: { icon: Video, class: "text-green-500" },
-  completed: { icon: CheckCircle2, class: "text-gray-400" },
+const DEMO_STATS: MonthlyStats = {
+  total_consultations: 187,
+  online_rate: 73,
+  retention_rate: 89,
+  avg_duration: 14.2,
 };
 
-export default function DoctorDashboard() {
-  const completedCount = todayAppointments.filter((a) => a.status === "completed").length;
+export default function DoctorDashboardPage() {
+  const [appointments, setAppointments] = useState(DEMO_APPOINTMENTS);
+  const [tasks] = useState(DEMO_TASKS);
+  const [stats] = useState(DEMO_STATS);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [greeting, setGreeting] = useState("");
+
+  useEffect(() => {
+    const h = new Date().getHours();
+    setGreeting(h < 12 ? "おはようございます" : h < 18 ? "こんにちは" : "お疲れさまです");
+  }, []);
+
+  const loadData = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
+
+      const { data: appts } = await supabase
+        .from("appointments")
+        .select("*, patients!inner(profiles!inner(display_name))")
+        .eq("doctor_id", user.id)
+        .gte("scheduled_at", todayStart.toISOString())
+        .lte("scheduled_at", todayEnd.toISOString())
+        .order("scheduled_at");
+
+      if (appts && appts.length > 0) {
+        setAppointments(
+          appts.map((a: Record<string, unknown>) => ({
+            id: a.id as string,
+            patient_name: ((a.patients as Record<string, unknown>)?.profiles as Record<string, string>)?.display_name || "患者",
+            patient_id: a.patient_id as string,
+            appointment_type: a.appointment_type as string,
+            status: a.status as string,
+            scheduled_at: a.scheduled_at as string,
+            duration_minutes: (a.duration_minutes as number) || 15,
+            has_consultation: !!a.ai_consultation_id,
+          }))
+        );
+      }
+    } catch {
+      /* use demo data */
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const completedAppts = appointments.filter((a) => a.status === "completed").length;
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-6xl">
-      <div>
-        <h1 className="text-2xl font-bold">おはようございます、佐藤先生</h1>
-        <p className="text-muted-foreground mt-1">
-          本日の予約: {todayAppointments.length}件 | 完了: {completedCount}件 |
-          未対応タスク: {pendingTasks.reduce((s, t) => s + t.count, 0)}件
-        </p>
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">{greeting}、先生</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {new Date().toLocaleDateString("ja-JP", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+              weekday: "long",
+            })}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-2.5 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="患者を検索..."
+              className="pl-9 w-48"
+            />
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {pendingTasks.map((task) => (
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {tasks.map((task) => (
           <Link key={task.type} href={task.href}>
             <Card className="hover:shadow-md transition-shadow cursor-pointer">
-              <CardContent className="pt-4 pb-3">
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${task.color}`}>
-                    <task.icon size={20} />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{task.count}</p>
-                    <p className="text-xs text-muted-foreground">{task.label}</p>
-                  </div>
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${task.color}`}>
+                  <task.icon size={18} />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{task.count}</p>
+                  <p className="text-xs text-muted-foreground">{task.label}</p>
                 </div>
               </CardContent>
             </Card>
@@ -76,51 +173,75 @@ export default function DoctorDashboard() {
         ))}
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Calendar size={18} className="text-teal-500" /> 本日のスケジュール
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Calendar size={18} className="text-teal-600" /> 本日の予約
+                  <Badge className="bg-teal-600">
+                    {completedAppts}/{appointments.length}
+                  </Badge>
                 </CardTitle>
-                <Link href="/doctor/schedule" className="text-sm text-teal-600 flex items-center gap-1">
-                  全て表示 <ArrowRight size={14} />
+                <Link href="/doctor/schedule">
+                  <Button variant="ghost" size="sm" className="text-xs">
+                    スケジュール管理 <ChevronRight size={14} />
+                  </Button>
                 </Link>
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
-              {todayAppointments.map((apt) => {
-                const si = statusIcon[apt.status] || statusIcon.scheduled;
+              {appointments.map((a) => {
+                const time = new Date(a.scheduled_at).toLocaleTimeString("ja-JP", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+                const isOnline = a.appointment_type.startsWith("online") || a.appointment_type === "pre_consultation";
+                const isCompleted = a.status === "completed";
+                const isPast = new Date(a.scheduled_at) < new Date() && !isCompleted;
+
                 return (
                   <div
-                    key={apt.id}
-                    className={`flex items-center gap-4 p-3 border rounded-xl hover:bg-gray-50 transition-colors ${
-                      apt.status === "completed" ? "opacity-50" : ""
+                    key={a.id}
+                    className={`flex items-center gap-3 p-3 rounded-lg ${
+                      isCompleted ? "bg-gray-50 opacity-60" : isPast ? "bg-teal-50 border border-teal-200" : "bg-white border"
                     }`}
                   >
-                    <div className="w-12 text-center">
-                      <p className="text-sm font-bold">{apt.time}</p>
+                    <div className="text-center min-w-[45px]">
+                      <p className="text-sm font-bold">{time}</p>
+                      <p className="text-[10px] text-muted-foreground">{a.duration_minutes}分</p>
                     </div>
-                    <si.icon size={16} className={si.class} />
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">{apt.patient}</p>
-                      <p className="text-xs text-muted-foreground">{apt.reason}</p>
-                    </div>
-                    <Badge variant="outline" className="text-xs">
-                      {apt.type === "online" ? "オンライン" : "対面"}
-                    </Badge>
-                    {apt.status !== "completed" && (
-                      <Button size="sm" variant="outline" className="text-xs">
-                        {apt.type === "online" ? (
-                          <>
-                            <Video size={12} className="mr-1" /> 入室
-                          </>
-                        ) : (
-                          "開始"
+                    <div className="border-l pl-3 flex-1">
+                      <div className="flex items-center gap-2">
+                        <Link href={`/doctor/patients/${a.patient_id}`} className="font-medium text-sm hover:text-teal-600">
+                          {a.patient_name}
+                        </Link>
+                        <Badge variant="outline" className="text-[10px]">
+                          {isOnline ? <><Video size={8} className="mr-0.5" />オンライン</> : <><MapPin size={8} className="mr-0.5" />対面</>}
+                        </Badge>
+                        {a.has_consultation && (
+                          <Badge variant="outline" className="text-[10px] text-teal-700 border-teal-300">AI問診済</Badge>
                         )}
-                      </Button>
-                    )}
+                        {isCompleted && <Badge variant="secondary" className="text-[10px]">完了</Badge>}
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      {isOnline && !isCompleted && (
+                        <Link href={`/doctor/consultations/${a.id}/video`}>
+                          <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-xs h-7">
+                            <Video size={12} className="mr-1" /> 開始
+                          </Button>
+                        </Link>
+                      )}
+                      {a.has_consultation && (
+                        <Link href={`/doctor/patients/${a.patient_id}/consultation`}>
+                          <Button variant="outline" size="sm" className="text-xs h-7">
+                            問診
+                          </Button>
+                        </Link>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -128,58 +249,52 @@ export default function DoctorDashboard() {
           </Card>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-4">
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <MessageSquareHeart size={18} className="text-amber-500" /> AI問診確認待ち
-              </CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">月間統計</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {[
-                { patient: "山田 太郎", urgency: "normal", complaint: "頭痛", time: "9:45" },
-                { patient: "田中 美咲", urgency: "semi_urgent", complaint: "胸痛・動悸", time: "10:10" },
-                { patient: "鈴木 あゆみ", urgency: "observation", complaint: "不眠", time: "11:15" },
-              ].map((c) => (
-                <Link key={c.patient} href="/doctor/consultations">
-                  <div className="p-3 border rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium">{c.patient}</span>
-                      <Badge
-                        className={
-                          c.urgency === "semi_urgent"
-                            ? "bg-orange-100 text-orange-700"
-                            : c.urgency === "normal"
-                            ? "bg-blue-100 text-blue-700"
-                            : "bg-green-100 text-green-700"
-                        }
-                      >
-                        {c.urgency === "semi_urgent" ? "準緊急" : c.urgency === "normal" ? "通常" : "経過観察"}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      主訴: {c.complaint} | {c.time}
-                    </p>
-                  </div>
-                </Link>
-              ))}
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">診療件数</span>
+                <span className="font-bold">{stats.total_consultations}件</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">オンライン率</span>
+                <span className="font-bold">{stats.online_rate}%</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">患者継続率</span>
+                <span className="font-bold text-green-600">{stats.retention_rate}%</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">平均診療時間</span>
+                <span className="font-bold">{stats.avg_duration}分</span>
+              </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-red-50 border-red-200">
-            <CardContent className="pt-5">
-              <div className="flex items-start gap-3">
-                <AlertTriangle size={20} className="text-red-600 shrink-0" />
-                <div>
-                  <p className="font-medium text-red-800">バイタルアラート</p>
-                  <p className="text-sm text-red-700 mt-1">
-                    田中美咲さんの血圧が160/100mmHgを超えています。3日連続の上昇傾向。
-                  </p>
-                  <Link href="/doctor/patients">
-                    <Button size="sm" className="mt-2 bg-red-600 hover:bg-red-700">
-                      確認する
-                    </Button>
-                  </Link>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Bell size={14} className="text-red-500" /> 最新アラート
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="flex items-start gap-2 p-2 bg-red-50 rounded-lg">
+                <AlertCircle size={14} className="text-red-500 mt-0.5 shrink-0" />
+                <div className="text-xs">
+                  <p className="font-medium text-red-700">山田 太郎 - 血圧上昇</p>
+                  <p className="text-red-600">収縮期血圧 158mmHg（閾値: 140）</p>
+                  <p className="text-muted-foreground">10分前</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 p-2 bg-yellow-50 rounded-lg">
+                <AlertCircle size={14} className="text-yellow-500 mt-0.5 shrink-0" />
+                <div className="text-xs">
+                  <p className="font-medium text-yellow-700">高橋 美咲 - 血糖値注意</p>
+                  <p className="text-yellow-600">空腹時血糖 132mg/dL</p>
+                  <p className="text-muted-foreground">1時間前</p>
                 </div>
               </div>
             </CardContent>

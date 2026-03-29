@@ -1,213 +1,402 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
-  Activity,
   HeartPulse,
+  Activity,
   Droplets,
   Weight,
-  Thermometer,
   Plus,
-  TrendingUp,
-  TrendingDown,
-  Minus,
+  AlertCircle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { createClient } from "@/lib/supabase/client";
 
-const bpHistory = [
-  { date: "3/22", systolic: 128, diastolic: 82 },
-  { date: "3/23", systolic: 135, diastolic: 88 },
-  { date: "3/24", systolic: 130, diastolic: 85 },
-  { date: "3/25", systolic: 142, diastolic: 92 },
-  { date: "3/26", systolic: 138, diastolic: 86 },
-  { date: "3/27", systolic: 132, diastolic: 84 },
-  { date: "3/28", systolic: 136, diastolic: 87 },
-];
+interface VitalEntry {
+  date: string;
+  bp_systolic?: number;
+  bp_diastolic?: number;
+  heart_rate?: number;
+  blood_glucose?: number;
+  body_weight?: number;
+  body_temp?: number;
+  steps?: number;
+}
 
-const glucoseHistory = [
-  { date: "3/22", fasting: 105, postMeal: 145 },
-  { date: "3/23", fasting: 112, postMeal: 158 },
-  { date: "3/24", fasting: 108, postMeal: 140 },
-  { date: "3/25", fasting: 118, postMeal: 165 },
-  { date: "3/26", fasting: 110, postMeal: 148 },
-  { date: "3/27", fasting: 115, postMeal: 155 },
-  { date: "3/28", fasting: 118, postMeal: 160 },
-];
+function generateDemoData(): VitalEntry[] {
+  const entries: VitalEntry[] = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    entries.push({
+      date: d.toISOString().split("T")[0],
+      bp_systolic: 125 + Math.round(Math.random() * 20 - 5),
+      bp_diastolic: 78 + Math.round(Math.random() * 15 - 5),
+      heart_rate: 68 + Math.round(Math.random() * 15),
+      blood_glucose: 105 + Math.round(Math.random() * 30 - 10),
+      body_weight: 68 + Math.round(Math.random() * 20 - 10) / 10,
+      body_temp: 36.2 + Math.round(Math.random() * 8) / 10,
+      steps: 4000 + Math.round(Math.random() * 6000),
+    });
+  }
+  return entries;
+}
 
-const weightHistory = [
-  { date: "3/1", weight: 74.2 },
-  { date: "3/8", weight: 73.8 },
-  { date: "3/15", weight: 73.5 },
-  { date: "3/22", weight: 73.7 },
-  { date: "3/28", weight: 73.5 },
-];
+const VITAL_THRESHOLDS = {
+  bp_systolic: { high: 140, low: 90, unit: "mmHg", label: "収縮期血圧" },
+  bp_diastolic: { high: 90, low: 60, unit: "mmHg", label: "拡張期血圧" },
+  heart_rate: { high: 100, low: 50, unit: "bpm", label: "心拍数" },
+  blood_glucose: { high: 126, low: 70, unit: "mg/dL", label: "血糖値" },
+  body_temp: { high: 37.5, low: 35.0, unit: "℃", label: "体温" },
+};
 
-export default function HealthPage() {
-  const [showInput, setShowInput] = useState(false);
+function SimpleChart({
+  data,
+  dataKey,
+  color,
+  threshold,
+}: {
+  data: VitalEntry[];
+  dataKey: keyof VitalEntry;
+  color: string;
+  threshold?: { high: number; low: number };
+}) {
+  const values = data.map((d) => (d[dataKey] as number) || 0).filter((v) => v > 0);
+  if (values.length === 0) return null;
+  const min = Math.min(...values) * 0.95;
+  const max = Math.max(...values) * 1.05;
+  const range = max - min || 1;
+  const width = 100 / values.length;
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-5xl mx-auto">
+    <div className="h-32 relative">
+      {threshold && (
+        <>
+          <div
+            className="absolute left-0 right-0 border-t border-dashed border-red-300"
+            style={{ top: `${100 - ((threshold.high - min) / range) * 100}%` }}
+          >
+            <span className="text-[9px] text-red-400 absolute right-0 -top-3">{threshold.high}</span>
+          </div>
+        </>
+      )}
+      <svg className="w-full h-full" viewBox={`0 0 ${values.length * 10} 100`} preserveAspectRatio="none">
+        <polyline
+          fill="none"
+          stroke={color}
+          strokeWidth="1.5"
+          points={values
+            .map((v, i) => `${i * 10 + 5},${100 - ((v - min) / range) * 100}`)
+            .join(" ")}
+        />
+        {values.map((v, i) => {
+          const isAbnormal = threshold && (v > threshold.high || v < threshold.low);
+          return (
+            <circle
+              key={i}
+              cx={i * 10 + 5}
+              cy={100 - ((v - min) / range) * 100}
+              r={isAbnormal ? "2.5" : "1.5"}
+              fill={isAbnormal ? "#ef4444" : color}
+            />
+          );
+        })}
+      </svg>
+      <div className="flex justify-between text-[9px] text-muted-foreground mt-1">
+        <span>{data[0]?.date.slice(5)}</span>
+        <span>{data[data.length - 1]?.date.slice(5)}</span>
+      </div>
+    </div>
+  );
+}
+
+export default function HealthPage() {
+  const [data, setData] = useState<VitalEntry[]>(generateDemoData);
+  const [showInput, setShowInput] = useState(false);
+  const [inputValues, setInputValues] = useState({
+    bp_systolic: "",
+    bp_diastolic: "",
+    heart_rate: "",
+    blood_glucose: "",
+    body_weight: "",
+    body_temp: "",
+  });
+
+  const loadData = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const thirtyDaysAgo = new Date(Date.now() - 86400000 * 30).toISOString();
+      const { data: vitals } = await supabase
+        .from("vital_records")
+        .select("vital_type, value, recorded_at")
+        .eq("patient_id", user.id)
+        .gte("recorded_at", thirtyDaysAgo)
+        .order("recorded_at");
+
+      if (vitals && vitals.length > 0) {
+        const grouped: Record<string, Partial<VitalEntry>> = {};
+        for (const v of vitals) {
+          const date = new Date(v.recorded_at).toISOString().split("T")[0];
+          if (!grouped[date]) grouped[date] = { date };
+          const key = v.vital_type as string;
+          (grouped[date] as Record<string, unknown>)[key] = v.value;
+        }
+        const entries = Object.values(grouped).sort((a, b) =>
+          (a.date || "").localeCompare(b.date || "")
+        ) as VitalEntry[];
+        if (entries.length > 0) setData(entries);
+      }
+    } catch {
+      /* use demo data */
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  async function saveVitals() {
+    const today = new Date().toISOString().split("T")[0];
+    const newEntry: VitalEntry = { date: today };
+
+    const records: Array<{ vital_type: string; value: number; unit: string }> = [];
+
+    if (inputValues.bp_systolic) {
+      newEntry.bp_systolic = Number(inputValues.bp_systolic);
+      records.push({ vital_type: "blood_pressure_systolic", value: Number(inputValues.bp_systolic), unit: "mmHg" });
+    }
+    if (inputValues.bp_diastolic) {
+      newEntry.bp_diastolic = Number(inputValues.bp_diastolic);
+      records.push({ vital_type: "blood_pressure_diastolic", value: Number(inputValues.bp_diastolic), unit: "mmHg" });
+    }
+    if (inputValues.heart_rate) {
+      newEntry.heart_rate = Number(inputValues.heart_rate);
+      records.push({ vital_type: "heart_rate", value: Number(inputValues.heart_rate), unit: "bpm" });
+    }
+    if (inputValues.blood_glucose) {
+      newEntry.blood_glucose = Number(inputValues.blood_glucose);
+      records.push({ vital_type: "blood_glucose", value: Number(inputValues.blood_glucose), unit: "mg/dL" });
+    }
+    if (inputValues.body_weight) {
+      newEntry.body_weight = Number(inputValues.body_weight);
+      records.push({ vital_type: "body_weight", value: Number(inputValues.body_weight), unit: "kg" });
+    }
+    if (inputValues.body_temp) {
+      newEntry.body_temp = Number(inputValues.body_temp);
+      records.push({ vital_type: "body_temperature", value: Number(inputValues.body_temp), unit: "℃" });
+    }
+
+    if (records.length === 0) return;
+
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from("vital_records").insert(
+          records.map((r) => ({
+            patient_id: user.id,
+            recorded_at: new Date().toISOString(),
+            source: "manual",
+            ...r,
+          }))
+        );
+
+        for (const r of records) {
+          const th = VITAL_THRESHOLDS[r.vital_type.replace("blood_pressure_", "bp_") as keyof typeof VITAL_THRESHOLDS];
+          if (th && (r.value > th.high || r.value < th.low)) {
+            await supabase.from("vital_alerts").insert({
+              patient_id: user.id,
+              alert_type: r.value > th.high ? "high" : "low",
+              severity: r.value > th.high * 1.2 || r.value < th.low * 0.8 ? "critical" : "warning",
+              message: `${th.label}が異常値です: ${r.value}${th.unit}`,
+              online_consultation_suggested: true,
+            });
+          }
+        }
+      }
+    } catch {
+      /* demo mode */
+    }
+
+    setData((prev) => {
+      const existing = prev.findIndex((e) => e.date === today);
+      if (existing >= 0) {
+        const updated = [...prev];
+        updated[existing] = { ...updated[existing], ...newEntry };
+        return updated;
+      }
+      return [...prev, newEntry];
+    });
+
+    setShowInput(false);
+    setInputValues({ bp_systolic: "", bp_diastolic: "", heart_rate: "", blood_glucose: "", body_weight: "", body_temp: "" });
+  }
+
+  const latest = data[data.length - 1];
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">健康データ</h1>
-          <p className="text-muted-foreground text-sm mt-1">バイタルの記録・推移を確認</p>
+          <p className="text-sm text-muted-foreground mt-1">過去30日間のバイタルデータ推移</p>
         </div>
-        <Button onClick={() => setShowInput(true)} className="bg-indigo-600 hover:bg-indigo-700">
-          <Plus size={16} className="mr-2" /> バイタル入力
+        <Button onClick={() => setShowInput(!showInput)} className="bg-indigo-600 hover:bg-indigo-700">
+          <Plus size={16} className="mr-2" /> バイタル記録
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {showInput && (
+        <Card className="border-indigo-300 bg-indigo-50/30">
+          <CardContent className="p-4 space-y-4">
+            <h3 className="font-medium">バイタルデータを入力</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div>
+                <Label className="text-xs">血圧（上）mmHg</Label>
+                <Input
+                  type="number"
+                  placeholder="132"
+                  value={inputValues.bp_systolic}
+                  onChange={(e) => setInputValues({ ...inputValues, bp_systolic: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">血圧（下）mmHg</Label>
+                <Input
+                  type="number"
+                  placeholder="84"
+                  value={inputValues.bp_diastolic}
+                  onChange={(e) => setInputValues({ ...inputValues, bp_diastolic: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">心拍数 bpm</Label>
+                <Input
+                  type="number"
+                  placeholder="72"
+                  value={inputValues.heart_rate}
+                  onChange={(e) => setInputValues({ ...inputValues, heart_rate: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">血糖値 mg/dL</Label>
+                <Input
+                  type="number"
+                  placeholder="105"
+                  value={inputValues.blood_glucose}
+                  onChange={(e) => setInputValues({ ...inputValues, blood_glucose: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">体重 kg</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  placeholder="68.5"
+                  value={inputValues.body_weight}
+                  onChange={(e) => setInputValues({ ...inputValues, body_weight: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">体温 ℃</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  placeholder="36.4"
+                  value={inputValues.body_temp}
+                  onChange={(e) => setInputValues({ ...inputValues, body_temp: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={saveVitals} className="bg-indigo-600 hover:bg-indigo-700">
+                記録する
+              </Button>
+              <Button variant="ghost" onClick={() => setShowInput(false)}>
+                キャンセル
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "血圧", value: "132/84", unit: "mmHg", icon: Activity, trend: "up", color: "red" },
-          { label: "心拍数", value: "72", unit: "bpm", icon: HeartPulse, trend: "stable", color: "pink" },
-          { label: "血糖値(空腹時)", value: "118", unit: "mg/dL", icon: Droplets, trend: "up", color: "blue" },
-          { label: "体重", value: "73.5", unit: "kg", icon: Weight, trend: "down", color: "green" },
-        ].map((v) => (
-          <Card key={v.label}>
-            <CardContent className="pt-4 pb-3">
-              <div className="flex items-center gap-2 mb-2">
-                <div className={`p-1.5 bg-${v.color}-50 rounded-lg`}>
-                  <v.icon size={16} className={`text-${v.color}-500`} />
-                </div>
-                <span className="text-xs text-muted-foreground">{v.label}</span>
-              </div>
-              <div className="flex items-end gap-2">
-                <span className="text-2xl font-bold">{v.value}</span>
-                <span className="text-xs text-muted-foreground mb-1">{v.unit}</span>
-                {v.trend === "up" && <TrendingUp size={14} className="text-red-500 mb-1 ml-auto" />}
-                {v.trend === "down" && <TrendingDown size={14} className="text-green-500 mb-1 ml-auto" />}
-                {v.trend === "stable" && <Minus size={14} className="text-gray-400 mb-1 ml-auto" />}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+          { icon: Activity, label: "血圧", value: latest?.bp_systolic && latest?.bp_diastolic ? `${latest.bp_systolic}/${latest.bp_diastolic}` : "-", unit: "mmHg", color: "text-red-500", threshold: VITAL_THRESHOLDS.bp_systolic, raw: latest?.bp_systolic },
+          { icon: HeartPulse, label: "心拍", value: latest?.heart_rate || "-", unit: "bpm", color: "text-pink-500", threshold: VITAL_THRESHOLDS.heart_rate, raw: latest?.heart_rate },
+          { icon: Droplets, label: "血糖", value: latest?.blood_glucose || "-", unit: "mg/dL", color: "text-blue-500", threshold: VITAL_THRESHOLDS.blood_glucose, raw: latest?.blood_glucose },
+          { icon: Weight, label: "体重", value: latest?.body_weight || "-", unit: "kg", color: "text-green-500" },
+        ].map((v) => {
+          const isAbnormal = v.threshold && v.raw && (v.raw > v.threshold.high || v.raw < v.threshold.low);
+          return (
+            <Card key={v.label} className={isAbnormal ? "border-red-300 bg-red-50/30" : ""}>
+              <CardContent className="p-3 text-center">
+                <v.icon size={18} className={`${v.color} mx-auto mb-1`} />
+                <p className="text-lg font-bold">{v.value}</p>
+                <p className="text-xs text-muted-foreground">{v.label} ({v.unit})</p>
+                {isAbnormal && (
+                  <Badge variant="destructive" className="text-xs mt-1">
+                    <AlertCircle size={10} className="mr-1" /> 異常値
+                  </Badge>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
-      <Tabs defaultValue="bp">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="bp">血圧</TabsTrigger>
-          <TabsTrigger value="glucose">血糖値</TabsTrigger>
-          <TabsTrigger value="weight">体重</TabsTrigger>
-        </TabsList>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-1">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Activity size={16} className="text-red-500" /> 血圧推移
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SimpleChart data={data} dataKey="bp_systolic" color="#ef4444" threshold={VITAL_THRESHOLDS.bp_systolic} />
+          </CardContent>
+        </Card>
 
-        <TabsContent value="bp">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">血圧推移（7日間）</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={bpHistory}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="date" fontSize={12} />
-                    <YAxis domain={[60, 160]} fontSize={12} />
-                    <Tooltip />
-                    <ReferenceLine y={140} stroke="#ef4444" strokeDasharray="3 3" label="高血圧基準" />
-                    <ReferenceLine y={90} stroke="#f59e0b" strokeDasharray="3 3" />
-                    <Line type="monotone" dataKey="systolic" stroke="#ef4444" strokeWidth={2} name="収縮期" dot={{ r: 4 }} />
-                    <Line type="monotone" dataKey="diastolic" stroke="#3b82f6" strokeWidth={2} name="拡張期" dot={{ r: 4 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+        <Card>
+          <CardHeader className="pb-1">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <HeartPulse size={16} className="text-pink-500" /> 心拍数推移
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SimpleChart data={data} dataKey="heart_rate" color="#ec4899" threshold={VITAL_THRESHOLDS.heart_rate} />
+          </CardContent>
+        </Card>
 
-        <TabsContent value="glucose">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">血糖値推移（7日間）</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={glucoseHistory}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="date" fontSize={12} />
-                    <YAxis domain={[80, 200]} fontSize={12} />
-                    <Tooltip />
-                    <ReferenceLine y={126} stroke="#ef4444" strokeDasharray="3 3" label="空腹時基準" />
-                    <Line type="monotone" dataKey="fasting" stroke="#3b82f6" strokeWidth={2} name="空腹時" dot={{ r: 4 }} />
-                    <Line type="monotone" dataKey="postMeal" stroke="#f59e0b" strokeWidth={2} name="食後" dot={{ r: 4 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+        <Card>
+          <CardHeader className="pb-1">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Droplets size={16} className="text-blue-500" /> 血糖値推移
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SimpleChart data={data} dataKey="blood_glucose" color="#3b82f6" threshold={VITAL_THRESHOLDS.blood_glucose} />
+          </CardContent>
+        </Card>
 
-        <TabsContent value="weight">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">体重推移（1ヶ月）</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={weightHistory}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="date" fontSize={12} />
-                    <YAxis domain={[72, 75]} fontSize={12} />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="weight" stroke="#10b981" strokeWidth={2} name="体重(kg)" dot={{ r: 4 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      <Dialog open={showInput} onOpenChange={setShowInput}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>バイタル入力</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>収縮期血圧 (mmHg)</Label>
-                <Input type="number" placeholder="130" />
-              </div>
-              <div className="space-y-2">
-                <Label>拡張期血圧 (mmHg)</Label>
-                <Input type="number" placeholder="85" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>心拍数 (bpm)</Label>
-                <Input type="number" placeholder="72" />
-              </div>
-              <div className="space-y-2">
-                <Label>体温 (°C)</Label>
-                <Input type="number" step="0.1" placeholder="36.5" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>血糖値 (mg/dL)</Label>
-                <Input type="number" placeholder="110" />
-              </div>
-              <div className="space-y-2">
-                <Label>体重 (kg)</Label>
-                <Input type="number" step="0.1" placeholder="73.5" />
-              </div>
-            </div>
-            <Button className="w-full bg-indigo-600 hover:bg-indigo-700" onClick={() => setShowInput(false)}>
-              記録する
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+        <Card>
+          <CardHeader className="pb-1">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Weight size={16} className="text-green-500" /> 体重推移
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SimpleChart data={data} dataKey="body_weight" color="#22c55e" />
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

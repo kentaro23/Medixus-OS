@@ -23,7 +23,7 @@ import { useRole } from "@/lib/role-context";
 
 const navItems = [
   { label: "ダッシュボード", href: "/dashboard", icon: LayoutDashboard },
-  { label: "AI問診", href: "/triage", icon: MessageSquareHeart },
+  { label: "AI問診", href: "/consultation", icon: MessageSquareHeart },
   { label: "予約", href: "/appointments", icon: Calendar },
   { label: "処方箋", href: "/prescriptions", icon: Pill },
   { label: "服薬管理", href: "/medications", icon: Pill },
