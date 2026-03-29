@@ -96,6 +96,26 @@ export function RoleProvider({ children }: { children: ReactNode }) {
           setLoading(false);
           return;
         }
+
+        const metadataRole = authUser.user_metadata?.role as AppRole | undefined;
+        if (metadataRole && VALID_ROLES.includes(metadataRole)) {
+          const fallbackName =
+            (authUser.user_metadata?.display_name as string | undefined) ||
+            authUser.email?.split("@")[0] ||
+            "ユーザー";
+          setRoleState(metadataRole);
+          setCookie(ROLE_COOKIE, metadataRole);
+          setUser({
+            id: authUser.id,
+            role: metadataRole,
+            displayName: fallbackName,
+            email: authUser.email ?? null,
+            avatarUrl:
+              (authUser.user_metadata?.avatar_url as string | undefined) || null,
+          });
+          setLoading(false);
+          return;
+        }
       }
     } catch {
       // Supabase not configured — fall through to cookie

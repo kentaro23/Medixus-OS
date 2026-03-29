@@ -29,6 +29,13 @@ export default function RoleGuard({ allowed, children }: RoleGuardProps) {
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (!mounted || loading) return;
+    if (!role) {
+      router.replace("/");
+    }
+  }, [mounted, loading, role, router]);
+
   if (!mounted || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -38,8 +45,11 @@ export default function RoleGuard({ allowed, children }: RoleGuardProps) {
   }
 
   if (!role) {
-    router.replace("/");
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full" />
+      </div>
+    );
   }
 
   if (!allowed.includes(role)) {
