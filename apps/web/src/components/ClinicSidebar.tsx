@@ -26,6 +26,8 @@ import { useState } from "react";
 import { useClinic } from "@/lib/clinic-context";
 import { clinics } from "@/lib/data";
 import type { ProductId } from "@/lib/types";
+import { createClient } from "@/lib/supabase/client";
+import { useRole } from "@/lib/role-context";
 
 interface NavItem {
   label: string;
@@ -47,6 +49,8 @@ export default function ClinicSidebar() {
   const pathname = usePathname();
   const { currentClinic, setCurrentClinic } = useClinic();
   const [showPicker, setShowPicker] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const { clearRole } = useRole();
 
   const subscribable = clinics.filter(
     (c) => c.subscribedProducts.length > 0 && c.status !== "churned"
@@ -61,6 +65,23 @@ export default function ClinicSidebar() {
     if (!productId) return true;
     return currentClinic.subscribedProducts.includes(productId);
   };
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        await supabase.auth.signOut({ scope: "local" });
+      }
+    } catch {
+      // ignore and continue local cleanup
+    } finally {
+      clearRole();
+      window.location.replace("/auth/login?logout=1");
+    }
+  }
 
   return (
     <aside className="w-64 min-h-screen bg-sidebar-bg flex flex-col fixed left-0 top-0 z-30">
@@ -204,14 +225,12 @@ export default function ClinicSidebar() {
             <span>プロフィール</span>
           </Link>
           <button
-            onClick={() => {
-              document.cookie = "medixus_role=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
-              window.location.href = "/";
-            }}
+            onClick={handleLogout}
+            disabled={loggingOut}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-red-400 hover:text-red-300 hover:bg-sidebar-hover transition-all"
           >
             <LogOut size={20} />
-            <span>ログアウト</span>
+            <span>{loggingOut ? "ログアウト中..." : "ログアウト"}</span>
           </button>
         </div>
       </nav>

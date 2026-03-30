@@ -20,6 +20,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import RoleGuard from "@/components/RoleGuard";
 import { useRole } from "@/lib/role-context";
+import { createClient } from "@/lib/supabase/client";
 
 const navItems = [
   { label: "ダッシュボード", href: "/doctor/dashboard", icon: LayoutDashboard, badge: 0 },
@@ -37,6 +38,24 @@ export default function DoctorLayout({
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { clearRole } = useRole();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        await supabase.auth.signOut({ scope: "local" });
+      }
+    } catch {
+      // ignore and continue local cleanup
+    } finally {
+      clearRole();
+      window.location.replace("/auth/login?logout=1");
+    }
+  }
 
   return (
     <RoleGuard allowed={["doctor"]}>
@@ -101,10 +120,11 @@ export default function DoctorLayout({
             <Settings size={18} /> 設定
           </Link>
           <button
-            onClick={() => { clearRole(); window.location.href = "/"; }}
+            onClick={handleLogout}
+            disabled={loggingOut}
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-red-600 hover:bg-red-50 w-full"
           >
-            <LogOut size={18} /> ログアウト
+            <LogOut size={18} /> {loggingOut ? "ログアウト中..." : "ログアウト"}
           </button>
         </div>
       </aside>

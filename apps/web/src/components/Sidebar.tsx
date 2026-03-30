@@ -20,6 +20,8 @@ import {
   LogOut,
 } from "lucide-react";
 import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { useRole } from "@/lib/role-context";
 
 interface NavItem {
   label: string;
@@ -76,6 +78,8 @@ const navItems: NavItem[] = [
 export default function Sidebar() {
   const pathname = usePathname();
   const [expandedItems, setExpandedItems] = useState<string[]>(["製品モジュール"]);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const { clearRole } = useRole();
 
   const toggleExpand = (label: string) => {
     setExpandedItems((prev) =>
@@ -87,6 +91,23 @@ export default function Sidebar() {
     if (href === "/admin") return pathname === "/admin";
     return pathname.startsWith(href);
   };
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        await supabase.auth.signOut({ scope: "local" });
+      }
+    } catch {
+      // ignore and continue local cleanup
+    } finally {
+      clearRole();
+      window.location.replace("/auth/login?logout=1");
+    }
+  }
 
   return (
     <aside className="w-64 min-h-screen bg-sidebar-bg flex flex-col fixed left-0 top-0 z-30">
@@ -167,13 +188,14 @@ export default function Sidebar() {
       </nav>
 
       <div className="px-3 py-3 border-t border-white/10">
-        <Link
-          href="/"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-sidebar-text hover:text-white hover:bg-sidebar-hover transition-all"
+        <button
+          onClick={handleLogout}
+          disabled={loggingOut}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-sidebar-text hover:text-white hover:bg-sidebar-hover transition-all"
         >
           <LogOut size={18} />
-          <span>ポータルに戻る</span>
-        </Link>
+          <span>{loggingOut ? "ログアウト中..." : "ログアウト"}</span>
+        </button>
       </div>
 
       <div className="px-4 py-4 border-t border-white/10">
