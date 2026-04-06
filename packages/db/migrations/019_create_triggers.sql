@@ -44,6 +44,15 @@ DECLARE
   v_new JSONB;
   v_actor_role TEXT;
 BEGIN
+  -- service role / auth trigger など auth.uid() が取れない文脈では監査ログ記録をスキップ
+  -- （この文脈での失敗が、本来のINSERT/UPDATE/DELETEを巻き戻さないようにする）
+  IF auth.uid() IS NULL THEN
+    IF TG_OP = 'DELETE' THEN
+      RETURN OLD;
+    END IF;
+    RETURN NEW;
+  END IF;
+
   IF TG_OP = 'INSERT' THEN
     v_action := 'create';
     v_old := NULL;

@@ -23,7 +23,12 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 
 function getErrorMessage(error: unknown): string {
   if (typeof error === "object" && error !== null && "message" in error) {
-    return String((error as { message: unknown }).message);
+    const e = error as { message: unknown; code?: unknown; status?: unknown; name?: unknown };
+    const parts = [String(e.message)];
+    if (e.code) parts.push(`code=${String(e.code)}`);
+    if (e.status) parts.push(`status=${String(e.status)}`);
+    if (e.name) parts.push(`name=${String(e.name)}`);
+    return parts.join(" | ");
   }
   return String(error);
 }
@@ -46,21 +51,21 @@ function isAlreadyRegisteredError(error: unknown): boolean {
 // 固定UUID
 // ================================================================
 const IDS = {
-  clinic: "c0000001-0000-0000-0000-000000000001",
+  clinic: "c0000001-0000-4000-8000-000000000001",
   patients: [
-    "e0000001-0000-0000-0000-000000000001", // 山田太郎
-    "e0000002-0000-0000-0000-000000000002", // 鈴木花子
-    "e0000003-0000-0000-0000-000000000003", // 佐々木健一
-    "e0000004-0000-0000-0000-000000000004", // 中村由美
-    "e0000005-0000-0000-0000-000000000005", // 渡辺洋介
+    "e0000001-0000-4000-8000-000000000001", // 山田太郎
+    "e0000002-0000-4000-8000-000000000002", // 鈴木花子
+    "e0000003-0000-4000-8000-000000000003", // 佐々木健一
+    "e0000004-0000-4000-8000-000000000004", // 中村由美
+    "e0000005-0000-4000-8000-000000000005", // 渡辺洋介
   ],
   doctors: [
-    "d0000001-0000-0000-0000-000000000001", // 佐藤誠一（院長）
-    "d0000002-0000-0000-0000-000000000002", // 田中美咲（非常勤）
+    "d0000001-0000-4000-8000-000000000001", // 佐藤誠一（院長）
+    "d0000002-0000-4000-8000-000000000002", // 田中美咲（非常勤）
   ],
-  clinicAdmin: "a0000001-0000-0000-0000-000000000001",
-  pharmacy: "b0000001-0000-0000-0000-000000000001",
-  lab: "b0000002-0000-0000-0000-000000000002",
+  clinicAdmin: "a0000001-0000-4000-8000-000000000001",
+  pharmacy: "b0000001-0000-4000-8000-000000000001",
+  lab: "b0000002-0000-4000-8000-000000000002",
 };
 
 const PATIENTS = [
@@ -129,7 +134,11 @@ async function seed() {
   console.log("  🏥 クリニック管理者...");
   const adminEmail = "admin@demo.medixus.jp";
   const { error: adminAuthErr } = await supabase.auth.admin.createUser({
-    uid: IDS.clinicAdmin, email: adminEmail, password: "Demo1234!", email_confirm: true,
+    id: IDS.clinicAdmin,
+    email: adminEmail,
+    password: "Demo1234!",
+    email_confirm: true,
+    user_metadata: { role: "clinic_admin", display_name: "佐藤 誠一（管理）" },
   });
   if (adminAuthErr && !isAlreadyRegisteredError(adminAuthErr)) {
     throw new Error(`[seed:auth.admin] ${getErrorMessage(adminAuthErr)}`);
@@ -149,7 +158,13 @@ async function seed() {
   for (let i = 0; i < PATIENTS.length; i++) {
     const p = PATIENTS[i]; const id = IDS.patients[i];
     const email = `patient${i + 1}@demo.medixus.jp`;
-    const { error: authErr } = await supabase.auth.admin.createUser({ uid: id, email, password: "Demo1234!", email_confirm: true });
+    const { error: authErr } = await supabase.auth.admin.createUser({
+      id,
+      email,
+      password: "Demo1234!",
+      email_confirm: true,
+      user_metadata: { role: "patient", display_name: p.name },
+    });
     if (authErr && !isAlreadyRegisteredError(authErr)) {
       throw new Error(`[seed:auth.patient.${i + 1}] ${getErrorMessage(authErr)}`);
     }
@@ -172,7 +187,13 @@ async function seed() {
   for (let i = 0; i < DOCTORS.length; i++) {
     const d = DOCTORS[i]; const id = IDS.doctors[i];
     const email = `doctor${i + 1}@demo.medixus.jp`;
-    const { error: authErr } = await supabase.auth.admin.createUser({ uid: id, email, password: "Demo1234!", email_confirm: true });
+    const { error: authErr } = await supabase.auth.admin.createUser({
+      id,
+      email,
+      password: "Demo1234!",
+      email_confirm: true,
+      user_metadata: { role: "doctor", display_name: d.name },
+    });
     if (authErr && !isAlreadyRegisteredError(authErr)) {
       throw new Error(`[seed:auth.doctor.${i + 1}] ${getErrorMessage(authErr)}`);
     }
