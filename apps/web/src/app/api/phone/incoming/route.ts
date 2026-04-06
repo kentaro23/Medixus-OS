@@ -7,11 +7,16 @@
  * 受け付けるフォーマット（2種類）:
  *   1. medixus-ai-phone の call_XXX.json をそのままPOST（call_type付き構造化データ）
  *   2. 従来の { caller_phone, transcript, clinic_id }（後方互換）
+ *
+ * セキュリティ:
+ *   - Webhook シークレット検証（MEDIXUS_PHONE_WEBHOOK_SECRET）
+ *   - レート制限（60秒で最大60リクエスト）
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { detectEmergency } from "@/lib/phone/emergency-detector";
+import { rateLimit, getRateLimitKey } from "@/lib/rate-limit";
 
 // --- medixus-ai-phone の出力フォーマット型 ---
 interface AiPhoneCallResult {
@@ -54,7 +59,44 @@ const CALL_TYPE_TO_PURPOSE: Record<string, string> = {
   未分類: "inquiry",
 };
 
+/** Webhook シークレット検証 */
+function verifyWebhookSecret(request: NextRequest): boolean {
+  const secret = process.env.MEDIXUS_PHONE_WEBHOOK_SECRET;
+  if (!secret) return true; // 未設定の場合はスキップ（後方互換）
+
+  const provided = request.headers.get("x-webhook-secret");
+  if (!provided) return false;
+
+  // タイミング攻撃対策: 長さが同じ場合のみ比較
+  if (provided.length !== secret.length) return false;
+  let diff = 0;
+  for (let i = 0; i < secret.length; i++) {
+    diff |= provided.charCodeAt(i) ^ secret.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 export async function POST(request: NextRequest) {
+  // --- レート制限 ---
+  const rateLimitResult = rateLimit(getRateLimitKey(request), { windowMs: 60_000, max: 60 });
+  if (!rateLimitResult.success) {
+    return NextResponse.json(
+      { error: "Too many requests. Please retry after some time." },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(rateLimitResult.retryAfter ?? 60),
+          "X-RateLimit-Remaining": "0",
+        },
+      }
+    );
+  }
+
+  // --- Webhook シークレット検証 ---
+  if (!verifyWebhookSecret(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { rateLimit, getRateLimitKey } from "@/lib/rate-limit";
 
 const PROMPT_TEMPLATE = `あなたは医療問診AIです。以下の制約に従ってください。
 
@@ -73,6 +74,15 @@ function isSupabaseConfigured(): boolean {
 }
 
 export async function POST(request: NextRequest) {
+  // レート制限: 60秒に20リクエストまで（AI APIはコストが高いため厳しめ）
+  const rateLimitResult = rateLimit(getRateLimitKey(request), { windowMs: 60_000, max: 20 });
+  if (!rateLimitResult.success) {
+    return NextResponse.json(
+      { error: "リクエストが多すぎます。しばらく待ってから再試行してください。" },
+      { status: 429, headers: { "Retry-After": String(rateLimitResult.retryAfter ?? 60) } }
+    );
+  }
+
   try {
     const body = await request.json();
     const { session_id, message, patient_id } = body as {
