@@ -13,7 +13,6 @@ import {
   Package,
   User,
   Search,
-  Filter,
   ChevronDown,
   ChevronUp,
   Check,
@@ -141,7 +140,8 @@ export default function DoctorPrescriptionsPage() {
         rx.id.toLowerCase().includes(q) ||
         rx.items.some((i) => i.name.toLowerCase().includes(q))
     );
-  }, [tab, search, approvedIds]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, search, approvedIds, prescriptions]);
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {

@@ -40,8 +40,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Stripe 連携（キー設定済みの場合）
-    let paymentIntentId: string | null = null;
-    let receiptUrl: string | null = null;
+    const paymentIntentId: string | null = null;
+    const receiptUrl: string | null = null;
 
     if (process.env.STRIPE_SECRET_KEY) {
       try {
