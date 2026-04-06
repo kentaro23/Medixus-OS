@@ -302,7 +302,7 @@ export default function HealthPage() {
     for (const [inputKey, entryKey, dbKey, unit] of fields) {
       const val = inputValues[inputKey as keyof typeof inputValues];
       if (val) {
-        (newEntry as Record<string, unknown>)[entryKey] = Number(val);
+        (newEntry as unknown as Record<string, unknown>)[entryKey] = Number(val);
         records.push({ vital_type: dbKey, value: Number(val), unit });
       }
     }
