@@ -99,11 +99,11 @@ export default function PatientLayout({
       )}
 
       <aside
-        className={`fixed top-16 left-0 bottom-0 w-64 bg-white border-r z-40 transform transition-transform duration-200 ${
+        className={`fixed top-16 left-0 bottom-0 w-64 bg-white border-r z-40 flex flex-col transform transition-transform duration-200 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         } lg:translate-x-0`}
       >
-        <nav className="p-4 space-y-1">
+        <nav className="flex-1 min-h-0 overflow-y-auto p-4 space-y-1">
           {navItems.map((item) => {
             const active = pathname === item.href;
             return (
@@ -123,7 +123,7 @@ export default function PatientLayout({
             );
           })}
         </nav>
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t">
+        <div className="shrink-0 p-4 border-t bg-white">
           <Link href="/clinic/profile" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-100">
             <User size={18} /> プロフィール設定
           </Link>
